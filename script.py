@@ -16,9 +16,9 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     torch_dtype=torch.float16,
-    device_map="cpu",  # Force l'utilisation du CPU
+    device_map="cpu",
     low_cpu_mem_usage=True,
-    max_memory={0: "6GB"}  # On alloue 6GB max pour garder de la marge
+    max_memory={0: "6GB"}
 )
 
 if tokenizer.pad_token is None:
@@ -34,20 +34,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ajout d'un cache simple
-from functools import lru_cache
-
 class EmailRequest(BaseModel):
     sender: str
     subject: str
     body: str
-    
-    # Rendre l'objet hashable pour le cache
-    def __hash__(self):
-        return hash((self.sender, self.subject, self.body))
 
 @app.post("/llm")
-@lru_cache(maxsize=1000)  # Cache les 1000 dernières requêtes
 async def classify_email(email: EmailRequest):
     try:
         prompt = f"""
@@ -73,7 +65,7 @@ async def classify_email(email: EmailRequest):
                 max_new_tokens=10,
                 pad_token_id=tokenizer.pad_token_id,
                 do_sample=False,
-                num_beams=1  # Beam search désactivé pour plus de rapidité
+                num_beams=1
             )
 
         response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
@@ -83,7 +75,7 @@ async def classify_email(email: EmailRequest):
         if classification not in valid_classifications:
             classification = "OK"
 
-        # Nettoyage mémoire explicite
+        # Nettoyage mémoire
         del outputs
         del inputs
         gc.collect()
