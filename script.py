@@ -36,14 +36,18 @@ app.add_middleware(
 
 # Ajout d'un cache simple
 from functools import lru_cache
-@lru_cache(maxsize=1000)  # Cache les 1000 dernières requêtes
 
 class EmailRequest(BaseModel):
     sender: str
     subject: str
     body: str
+    
+    # Rendre l'objet hashable pour le cache
+    def __hash__(self):
+        return hash((self.sender, self.subject, self.body))
 
 @app.post("/llm")
+@lru_cache(maxsize=1000)  # Cache les 1000 dernières requêtes
 async def classify_email(email: EmailRequest):
     try:
         prompt = f"""
