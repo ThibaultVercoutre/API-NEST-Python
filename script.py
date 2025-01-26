@@ -42,6 +42,7 @@ class EmailRequest(BaseModel):
 @app.post("/llm")
 async def classify_email(email: EmailRequest):
     try:
+        print("Prompt...")
         prompt = f"""
         Classify this email as SPAM, PHISHING, or OK:
         Sender: {email.sender}
@@ -50,6 +51,9 @@ async def classify_email(email: EmailRequest):
         Classification:
         """
 
+        print(prompt)
+        
+        print("Tokenization...")
         inputs = tokenizer(
             prompt, 
             return_tensors="pt", 
@@ -58,6 +62,7 @@ async def classify_email(email: EmailRequest):
             max_length=512
         ).to(model.device)
 
+        print("Generation...")
         with torch.inference_mode():
             outputs = model.generate(
                 inputs.input_ids,
@@ -69,6 +74,7 @@ async def classify_email(email: EmailRequest):
             )
 
         response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+        print(response)
         classification = response.strip().split()[0].upper()
 
         valid_classifications = ["SPAM", "PHISHING", "OK"]
