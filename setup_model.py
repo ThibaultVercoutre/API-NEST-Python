@@ -15,7 +15,7 @@ model = AutoModelForCausalLM.from_pretrained(
     model_name,
     trust_remote_code=True,
     torch_dtype="auto",
-    device_map="auto"
+    device_map="cpu",
 )
 
 # tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")

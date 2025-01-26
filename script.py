@@ -16,7 +16,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(
     model_name,
     torch_dtype=torch.float16,
-    device_map="auto",
+    device_map="cpu",  # Force l'utilisation du CPU
     low_cpu_mem_usage=True,
     max_memory={0: "6GB"}  # On alloue 6GB max pour garder de la marge
 )
