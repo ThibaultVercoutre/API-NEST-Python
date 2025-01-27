@@ -5,6 +5,7 @@ import uvicorn
 import torch
 from fastapi.middleware.cors import CORSMiddleware
 import gc
+import time
 
 # Optimisations mémoire
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -42,6 +43,7 @@ class EmailRequest(BaseModel):
 @app.post("/llm")
 async def classify_email(email: EmailRequest):
     try:
+        t = time.time()
         print("Prompt...")
         prompt = f"""
         Classify this email as SPAM, PHISHING, or OK:
@@ -86,6 +88,8 @@ async def classify_email(email: EmailRequest):
         del inputs
         gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+        print(f"Temps d'exécution: {time.time() - t:.2f} secondes")
 
         return {"classification": classification}
 
