@@ -45,13 +45,14 @@ async def classify_email(email: EmailRequest):
     try:
         t = time.time()
         print("Prompt...")
-        prompt = f"""
-        Classify this email as SPAM, PHISHING, or OK:
-        Sender: {email.sender}
-        Subject: {email.subject}
-        Body: {email.body}
-        Classification:
-        """
+        prompt = f"""Analyze the following email and classify it strictly as either SPAM, PHISHING, or OK. Only respond with one of these three words.
+
+Email details:
+From: {email.sender}
+Subject: {email.subject}
+Content: {email.body}
+
+Classification (respond with exactly one word - SPAM, PHISHING, or OK):"""
 
         print(prompt)
         
@@ -72,28 +73,29 @@ async def classify_email(email: EmailRequest):
                 max_new_tokens=10,
                 pad_token_id=tokenizer.pad_token_id,
                 do_sample=False,
-                num_beams=1
+                num_beams=1,
+                temperature=0.1,  # Réduire la température pour des réponses plus déterministes
+                top_p=0.95,      # Contrôler la diversité des tokens générés
+                early_stopping=True  # Arrêter la génération dès qu'une réponse valide est trouvée
             )
 
         response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-        print(response)
-        classification = response.strip().split()[0].upper()
-
-        # valid_classifications = ["SPAM", "PHISHING", "OK"]
-        # if classification not in valid_classifications:
-        #     classification = "OK"
-
-        # Nettoyage mémoire
-        del outputs
-        del inputs
-        gc.collect()
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
-
+        print(f"Réponse brute: {response}")
+        
+        # Nettoyage de la réponse
+        response = response.strip().upper()
+        valid_classifications = ["SPAM", "PHISHING", "OK"]
+        
+        # Si la réponse contient un des mots valides, on le prend
+        classification = next((c for c in valid_classifications if c in response), "UNKNOWN")
+        
+        print(f"Classification finale: {classification}")
         print(f"Temps d'exécution: {time.time() - t:.2f} secondes")
 
-        return {"classification": response}
+        return {"classification": classification}
 
     except Exception as e:
+        print(f"Erreur: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
