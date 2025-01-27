@@ -79,9 +79,9 @@ async def classify_email(email: EmailRequest):
         print(response)
         classification = response.strip().split()[0].upper()
 
-        valid_classifications = ["SPAM", "PHISHING", "OK"]
-        if classification not in valid_classifications:
-            classification = "OK"
+        # valid_classifications = ["SPAM", "PHISHING", "OK"]
+        # if classification not in valid_classifications:
+        #     classification = "OK"
 
         # Nettoyage mémoire
         del outputs
@@ -91,7 +91,7 @@ async def classify_email(email: EmailRequest):
 
         print(f"Temps d'exécution: {time.time() - t:.2f} secondes")
 
-        return {"classification": classification}
+        return {"classification": response}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
