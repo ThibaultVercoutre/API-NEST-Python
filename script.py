@@ -1,29 +1,9 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
 import uvicorn
-import torch
-from fastapi.middleware.cors import CORSMiddleware
-import gc
+import requests
 import time
-
-# Optimisations mémoire
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.benchmark = True
-
-# Load Phi-2 model and tokenizer 
-model_name = "./phi2_model"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype=torch.float16,
-    device_map="cpu",
-    low_cpu_mem_usage=True,
-    max_memory={0: "6GB"}
-)
-
-if tokenizer.pad_token is None:
-    tokenizer.pad_token = tokenizer.eos_token
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Email Classification API")
 
@@ -44,55 +24,48 @@ class EmailRequest(BaseModel):
 async def classify_email(email: EmailRequest):
     try:
         t = time.time()
-        print("Prompt...")
-        prompt = f"""Analyze the following email and classify it strictly as either SPAM, PHISHING, or OK. Only respond with one of these three words.
+        print("Sending request to Ollama...")
+        
+        prompt = f"""You are a mail classifier. Your task is to classify the following email as either SPAM, PHISHING, or OK.
+Rules:
+- Only answer with one word: SPAM, PHISHING, or OK
+- If it looks like a scam or malicious link, classify as PHISHING
+- If it's unwanted commercial email, classify as SPAM
+- If it seems legitimate, classify as OK
 
-Email details:
+Email:
 From: {email.sender}
 Subject: {email.subject}
-Content: {email.body}
+Body: {email.body}
 
-Classification (respond with exactly one word - SPAM, PHISHING, or OK):"""
+Your classification:"""
 
-        print(prompt)
+        response = requests.post('http://localhost:11434/api/generate', 
+            json={
+                "model": "phi",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3,
+                    "top_k": 3,
+                    "num_predict": 5
+                }
+            })
         
-        print("Tokenization...")
-        inputs = tokenizer(
-            prompt, 
-            return_tensors="pt", 
-            truncation=True, 
-            padding=True, 
-            max_length=512
-        ).to(model.device)
-
-        print("Generation...")
-        with torch.inference_mode():
-            outputs = model.generate(
-                inputs.input_ids,
-                attention_mask=inputs.attention_mask,
-                max_new_tokens=10,
-                pad_token_id=tokenizer.pad_token_id,
-                do_sample=False,
-                num_beams=1,
-                temperature=0.1,  # Réduire la température pour des réponses plus déterministes
-                top_p=0.95,      # Contrôler la diversité des tokens générés
-                early_stopping=True  # Arrêter la génération dès qu'une réponse valide est trouvée
-            )
-
-        response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-        print(f"Réponse brute: {response}")
-        
-        # Nettoyage de la réponse
-        response = response.strip().upper()
-        valid_classifications = ["SPAM", "PHISHING", "OK"]
-        
-        # Si la réponse contient un des mots valides, on le prend
-        classification = next((c for c in valid_classifications if c in response), "UNKNOWN")
-        
-        print(f"Classification finale: {classification}")
-        print(f"Temps d'exécution: {time.time() - t:.2f} secondes")
-
-        return {"classification": classification}
+        if response.status_code == 200:
+            result = response.json()
+            raw_response = result['response'].strip().upper()
+            print(f"Réponse brute: '{raw_response}'")
+            
+            valid_classifications = ["SPAM", "PHISHING", "OK"]
+            classification = next((c for c in valid_classifications if c in raw_response), "UNKNOWN")
+            
+            print(f"Classification finale: {classification}")
+            print(f"Temps d'exécution: {time.time() - t:.2f} secondes")
+            
+            return {"classification": classification, "raw_response": raw_response}
+        else:
+            raise HTTPException(status_code=500, detail="Erreur de l'API Ollama")
 
     except Exception as e:
         print(f"Erreur: {str(e)}")
