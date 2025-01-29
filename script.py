@@ -139,7 +139,7 @@ async def classify_email_deepseek(email: EmailRequest):
 
         response = requests.post('http://localhost:11434/api/generate', 
             json={
-                "model": "deepseek-r1:1.5b",
+                "model": "deepseek-r1:8b",
                 "prompt": prompt,
                 "stream": False,
                 "options": {
