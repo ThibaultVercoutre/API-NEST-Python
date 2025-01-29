@@ -145,10 +145,9 @@ async def classify_email_deepseek(email: EmailRequest):
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,     # Réduit pour avoir des réponses plus déterministes
-                    "top_p": 0.9,          # Ajout du top_p pour mieux contrôler la distribution
-                    "num_predict": 10,      # Augmenté pour permettre une réponse complète
-                    "stop": ["\n", "<"]     # Ajout de stop tokens pour éviter les réponses parasites
+                    "temperature": 0.3,
+                    "top_k": 3,
+                    "num_predict": 5
                 }
             })
         
