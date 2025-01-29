@@ -1,7 +1,7 @@
 /offload_dir
 /phi2_model
 
-enron_data_fraud_labeled.csv
+*.csv
 
 .env
 *.env
