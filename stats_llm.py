@@ -7,7 +7,7 @@ def analyze_accuracy():
     """
     # Chargement des résultats
     try:
-        results = pd.read_csv('llm_test_results.csv')
+        results = pd.read_csv('llm_mistral_test_results.csv')
         print(f"Nombre total d'emails analysés: {len(results)}")
         
         # Création d'une colonne pour les bonnes prédictions
@@ -52,7 +52,7 @@ def analyze_accuracy():
                 print(f"Précision: {accuracy:.2f}%")
         
     except FileNotFoundError:
-        print("Erreur: Le fichier 'llm_test_results.csv' n'a pas été trouvé.")
+        print("Erreur: Le fichier 'llm_mistral_test_results.csv' n'a pas été trouvé.")
     except Exception as e:
         print(f"Une erreur est survenue: {str(e)}")
 
