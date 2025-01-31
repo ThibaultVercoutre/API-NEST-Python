@@ -5,6 +5,8 @@ import hashlib
 from tqdm import tqdm
 import numpy as np
 
+model = "phi3"
+
 def clean_text(text):
     """Nettoie le texte des valeurs NaN et caractères spéciaux"""
     if pd.isna(text) or isinstance(text, float):
@@ -26,7 +28,7 @@ def test_llm(email_data):
         }
             
         response = requests.post(
-            'http://46.202.131.99:8000/llm/mistral',
+            'http://46.202.131.99:8000/llm/' + model,
             json=clean_data
         )
         
@@ -72,7 +74,7 @@ def main():
     
     # Chargement des résultats précédents s'ils existent
     try:
-        results_df = pd.read_csv('llm_mistral_test_results.csv')
+        results_df = pd.read_csv('llm_' + model + '_test_results.csv')
         tested_hashes = set(results_df['hash'])
         print(f"Chargement de {len(tested_hashes)} résultats précédents")
     except FileNotFoundError:
@@ -102,7 +104,7 @@ def main():
         if len(new_results) % 10 == 0 and new_results:
             temp_df = pd.DataFrame(new_results)
             updated_results = pd.concat([results_df, temp_df], ignore_index=True)
-            updated_results.to_csv('llm_mistral_test_results.csv', index=False)
+            updated_results.to_csv('llm_' + model + '_test_results.csv', index=False)
             print(f"\nSauvegarde intermédiaire effectuée - {len(new_results)} nouveaux résultats")
         
         # Pause entre chaque requête pour éviter de surcharger l'API
@@ -112,7 +114,7 @@ def main():
     if new_results:
         new_results_df = pd.DataFrame(new_results)
         final_results = pd.concat([results_df, new_results_df], ignore_index=True)
-        final_results.to_csv('llm_mistral_test_results.csv', index=False)
+        final_results.to_csv('llm_' + model + '_test_results.csv', index=False)
         
         # Analyse des résultats
         total = len(final_results)

@@ -1,13 +1,15 @@
 import pandas as pd
 import numpy as np
 
+model = "phi3"
+
 def analyze_accuracy():
     """
     Analyse la précision des classifications du LLM en comparant avec les labels POI
     """
     # Chargement des résultats
     try:
-        results = pd.read_csv('llm_mistral_test_results.csv')
+        results = pd.read_csv('llm_' + model + '_test_results.csv')
         print(f"Nombre total d'emails analysés: {len(results)}")
         
         # Création d'une colonne pour les bonnes prédictions
@@ -17,7 +19,8 @@ def analyze_accuracy():
         results['correct_prediction'] = (
             (results['POI-Present'] == 1) & 
             ((results['llm_classification'] == 'PHISHING') | 
-             (results['llm_classification'] == 'SPAM'))
+             (results['llm_classification'] == 'SPAM') | 
+             (results['llm_classification'] == 'UNKNOWN'))
         )
         
         # Calcul des métriques
