@@ -176,20 +176,17 @@ async def classify_email_deepseek(email: EmailRequest):
         t = time.time()
         print("Sending request to Ollama (DeepSeek)...")
         
-        prompt = f"""CRITICAL: Output ONE WORD ONLY. No explanations. No thinking. Just the word.
-            Choose EXACTLY one: SPAM, PHISHING, OK
-
-            Rules:
-            Malicious/scams = PHISHING
-            Unwanted ads = SPAM 
-            Legitimate = OK
+        prompt = f"""Output ONLY the number:
+            1 = SPAM
+            2 = PHISHING
+            3 = OK
 
             Email:
             From: {email.sender}
             Subject: {email.subject}
             Body: {email.body}
 
-            Output (ONE WORD):"""
+            Number:"""
 
         response = requests.post('http://localhost:11434/api/generate', 
             json={
