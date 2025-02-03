@@ -37,7 +37,7 @@ async def classify_email(email: EmailRequest):
             {{
             Classification: "SPAM" or "PHISHING" or "OK"
             }}
-            
+
             Email:
             From: {email.sender}
             Subject: {email.subject}
@@ -53,7 +53,7 @@ async def classify_email(email: EmailRequest):
                 "options": {
                     "temperature": 0.3,
                     "top_k": 3,
-                    "num_predict": 50
+                    # "num_predict": 50
                 }
             })
         
@@ -109,7 +109,7 @@ async def classify_email(email: EmailRequest):
                 "options": {
                     "temperature": 0.3,
                     "top_k": 3,
-                    "num_predict": 50
+                    # "num_predict": 50
                 }
             })
         
@@ -164,7 +164,7 @@ async def classify_email_mistral(email: EmailRequest):
                 "options": {
                     "temperature": 0.3,
                     "top_k": 3,
-                    "num_predict": 50
+                    # "num_predict": 50
                 }
             })
         
@@ -192,7 +192,14 @@ async def classify_email_deepseek(email: EmailRequest):
         t = time.time()
         print("Sending request to Ollama (DeepSeek)...")
         
-        prompt = f"""Please respond EXACTLY in this format:
+        prompt = f"""You are a mail classifier. Your task is to classify the following email as either SPAM, PHISHING, or OK.
+            Rules:
+            - Only answer with one word: SPAM, PHISHING, or OK
+            - If it looks like a scam or malicious link, classify as PHISHING
+            - If it's unwanted commercial email, classify as SPAM
+            - If it seems legitimate, classify as OK
+
+            Please respond EXACTLY in this format:
             {{
             Classification: "SPAM" or "PHISHING" or "OK"
             }}
@@ -200,7 +207,8 @@ async def classify_email_deepseek(email: EmailRequest):
             Email:
             From: {email.sender}
             Subject: {email.subject}
-            Body: {email.body}"""
+            Body: {email.body}
+            Your classification:"""
 
         response = requests.post('http://localhost:11434/api/generate', 
             json={
@@ -210,7 +218,7 @@ async def classify_email_deepseek(email: EmailRequest):
                 "options": {
                     "temperature": 0.1,  # Reduced temperature
                     "top_k": 1,          # Reduced to force more deterministic output
-                    "num_predict": 50     # Reduced to limit response length
+                    # "num_predict": 50     # Reduced to limit response length
                 }
             })
         
