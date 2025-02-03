@@ -176,19 +176,20 @@ async def classify_email_deepseek(email: EmailRequest):
         t = time.time()
         print("Sending request to Ollama (DeepSeek)...")
         
-        prompt = f"""Classify this email as SPAM, PHISHING, or OK. Only output one of these three words.
+        prompt = f"""You must respond with exactly one word from these three options: SPAM, PHISHING, or OK.
+            Do not include any explanation, thinking, or additional text.
 
-            RULES:
-            1. If it contains scams or malicious links = PHISHING
-            2. If it's unwanted commercial content = SPAM
-            3. If it's legitimate = OK
+            Rules:
+            - Malicious links/scams = PHISHING
+            - Unwanted commercial = SPAM
+            - Legitimate = OK
 
-            EMAIL DETAILS:
+            Email:
             From: {email.sender}
             Subject: {email.subject}
             Body: {email.body}
 
-            CLASSIFICATION (one word only with PHISHING, SPAM and OK):"""
+            Classification (respond with single word only):"""
 
         response = requests.post('http://localhost:11434/api/generate', 
             json={
@@ -196,9 +197,9 @@ async def classify_email_deepseek(email: EmailRequest):
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.3,
-                    "top_k": 3,
-                    "num_predict": 5
+                    "temperature": 0.1,  # Reduced temperature
+                    "top_k": 1,          # Reduced to force more deterministic output
+                    "num_predict": 1     # Reduced to limit response length
                 }
             })
         
