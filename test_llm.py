@@ -5,7 +5,7 @@ import hashlib
 from tqdm import tqdm
 import numpy as np
 
-model = "deepseek"
+model = "phi"
 
 def clean_text(text):
     """Nettoie le texte des valeurs NaN et caractères spéciaux"""
@@ -29,7 +29,8 @@ def test_llm(email_data):
         }
             
         response = requests.post(
-            'http://46.202.131.99:8000/llm/' + model,
+            # 'http://46.202.131.99:8000/llm/' + model,
+            'http://127.0.0.1:8000/llm/' + model,
             json=clean_data
         )
         
