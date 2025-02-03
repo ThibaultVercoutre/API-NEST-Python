@@ -199,7 +199,7 @@ async def classify_email_deepseek(email: EmailRequest):
                 "options": {
                     "temperature": 0.1,  # Reduced temperature
                     "top_k": 1,          # Reduced to force more deterministic output
-                    "num_predict": 1     # Reduced to limit response length
+                    "num_predict": 10     # Reduced to limit response length
                 }
             })
         
