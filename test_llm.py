@@ -5,7 +5,7 @@ import hashlib
 from tqdm import tqdm
 import numpy as np
 
-model = "phi3"
+model = "deepseek"
 
 def clean_text(text):
     """Nettoie le texte des valeurs NaN et caractères spéciaux"""
@@ -20,7 +20,7 @@ def create_hash(row):
 
 def test_llm(email_data):
     """Teste un email avec le LLM via l'API"""
-    try:
+    try: 
         clean_data = {
             "sender": clean_text(email_data['From']),
             "subject": clean_text(email_data['Subject']),

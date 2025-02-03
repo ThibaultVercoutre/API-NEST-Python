@@ -188,7 +188,7 @@ async def classify_email_deepseek(email: EmailRequest):
             Subject: {email.subject}
             Body: {email.body}
 
-            CLASSIFICATION (one word only):"""
+            CLASSIFICATION (one word only with PHISHING, SPAM and OK):"""
 
         response = requests.post('http://localhost:11434/api/generate', 
             json={

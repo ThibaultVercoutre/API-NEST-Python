@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-model = "phi3"
+model = "deepseek"
 
 def analyze_accuracy():
     """
