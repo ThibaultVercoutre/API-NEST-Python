@@ -20,7 +20,8 @@ def create_hash(row):
 
 def test_llm(email_data):
     """Teste un email avec le LLM via l'API"""
-    try: 
+    try:
+        start_time = time.time() 
         clean_data = {
             "sender": clean_text(email_data['From']),
             "subject": clean_text(email_data['Subject']),
@@ -32,9 +33,15 @@ def test_llm(email_data):
             json=clean_data
         )
         
+        response_time = time.time() - start_time
+        
         if response.status_code == 200:
             result = response.json()
-            return result['classification']
+            return {
+                'classification': result['classification'],
+                'response_length': len(result.get('raw_response', '')),
+                'response_time': response_time
+            }
         else:
             print(f"Erreur API: {response.status_code}")
             return None
@@ -78,7 +85,7 @@ def main():
         tested_hashes = set(results_df['hash'])
         print(f"Chargement de {len(tested_hashes)} résultats précédents")
     except FileNotFoundError:
-        results_df = pd.DataFrame(columns=['hash', 'From', 'Subject', 'Body', 'POI-Present', 'llm_classification'])
+        results_df = pd.DataFrame(columns=['hash', 'From', 'Subject', 'Body', 'POI-Present', 'llm_classification', 'response_length', 'response_time'])
         tested_hashes = set()
         print("Aucun résultat précédent trouvé")
     
@@ -89,15 +96,17 @@ def main():
     # Test des nouveaux emails
     new_results = []
     for _, row in tqdm(untested_data.iterrows(), total=len(untested_data)):
-        classification = test_llm(row)
-        if classification:
+        result = test_llm(row)
+        if result:
             new_results.append({
                 'hash': row['hash'],
                 'From': row['From'],
                 'Subject': row['Subject'],
                 'Body': row['Body'],
                 'POI-Present': row['POI-Present'],
-                'llm_classification': classification
+                'llm_classification': result['classification'],
+                'response_length': result['response_length'],
+                'response_time': result['response_time']
             })
             
         # Sauvegarde intermédiaire tous les 10 emails
