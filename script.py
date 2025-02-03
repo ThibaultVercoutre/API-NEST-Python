@@ -48,7 +48,7 @@ async def classify_email(email: EmailRequest):
                 "options": {
                     "temperature": 0.3,
                     "top_k": 3,
-                    "num_predict": 50
+                    # "num_predict": 50
                 }
             })
         
@@ -104,7 +104,7 @@ async def classify_email(email: EmailRequest):
                 "options": {
                     "temperature": 0.3,
                     "top_k": 3,
-                    "num_predict": 50
+                    # "num_predict": 50
                 }
             })
         
@@ -159,7 +159,7 @@ async def classify_email_mistral(email: EmailRequest):
                 "options": {
                     "temperature": 0.3,
                     "top_k": 3,
-                    "num_predict": 50
+                    # "num_predict": 50
                 }
             })
         
