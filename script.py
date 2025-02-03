@@ -33,6 +33,11 @@ async def classify_email(email: EmailRequest):
             - If it's unwanted commercial email, classify as SPAM
             - If it seems legitimate, classify as OK
 
+            Please respond EXACTLY in this format:
+            {{
+            Classification: "SPAM" or "PHISHING" or "OK"
+            }}
+            
             Email:
             From: {email.sender}
             Subject: {email.subject}
