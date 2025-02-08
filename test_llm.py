@@ -6,6 +6,7 @@ from tqdm import tqdm
 import numpy as np
 
 model = "phi"
+RAG = '_RAG'
 
 def clean_text(text):
     """Nettoie le texte des valeurs NaN et caractères spéciaux"""
@@ -73,6 +74,9 @@ def main():
     
     # Ne garder que les cas frauduleux
     data = data[data['POI-Present'] == 1].copy()
+
+    # Ne garder que les 9000 premières lignes
+    # data = data.head(9000)
     
     print(f"Nombre total d'emails au départ: {initial_count}")
     print(f"Nombre d'emails après filtrage des données incomplètes: {len(data)}")
@@ -82,7 +86,7 @@ def main():
     
     # Chargement des résultats précédents s'ils existent
     try:
-        results_df = pd.read_csv('llm_' + model + '_test_results.csv')
+        results_df = pd.read_csv('llm_' + model + '_test_results' + RAG + '.csv')
         tested_hashes = set(results_df['hash'])
         print(f"Chargement de {len(tested_hashes)} résultats précédents")
     except FileNotFoundError:
@@ -114,7 +118,7 @@ def main():
         if len(new_results) % 10 == 0 and new_results:
             temp_df = pd.DataFrame(new_results)
             updated_results = pd.concat([results_df, temp_df], ignore_index=True)
-            updated_results.to_csv('llm_' + model + '_test_results.csv', index=False)
+            updated_results.to_csv('llm_' + model + '_test_results' + RAG + '.csv', index=False)
             print(f"\nSauvegarde intermédiaire effectuée - {len(new_results)} nouveaux résultats")
         
         # Pause entre chaque requête pour éviter de surcharger l'API
@@ -124,7 +128,7 @@ def main():
     if new_results:
         new_results_df = pd.DataFrame(new_results)
         final_results = pd.concat([results_df, new_results_df], ignore_index=True)
-        final_results.to_csv('llm_' + model + '_test_results.csv', index=False)
+        final_results.to_csv('llm_' + model + '_test_results' + RAG + '.csv', index=False)
         
         # Analyse des résultats
         total = len(final_results)

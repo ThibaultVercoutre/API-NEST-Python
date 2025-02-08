@@ -4,8 +4,30 @@ import uvicorn
 import requests
 import time
 from fastapi.middleware.cors import CORSMiddleware
+import chromadb
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import pandas as pd
+import numpy as np
+from typing import Optional, Dict, Any
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="Email Classification API")
+# Global variables
+vector_store = None
+embedding_model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("Initializing vector store...")
+    initialize_vector_store()
+    yield
+    # Shutdown
+    if vector_store:
+        vector_store.persist()
+
+app = FastAPI(title="Enhanced Email Classification API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,15 +49,90 @@ models = {
     "deepseek": "deepseek-r1:8b"
 }
 
+def clean_text(text: str) -> str:
+    """Clean text from NaN values and special characters"""
+    if pd.isna(text) or isinstance(text, float):
+        return ""
+    return str(text).strip()
+
+def initialize_vector_store(csv_path: str = "enron_data_fraud_labeled.csv"):
+    """Initialize and populate the vector store with training emails from CSV"""
+    global vector_store, embedding_model
+    
+    # Initialize the embedding model
+    embedding_model = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={'device': 'cpu'}
+    )
+    
+    # Create or load the vector store
+    vector_store = Chroma(
+        persist_directory="enron_db",
+        embedding_function=embedding_model
+    )
+    
+    # Only populate if the store is empty
+    if vector_store._collection.count() == 0:
+        print("Loading training data from CSV...")
+        df = pd.read_csv(csv_path, low_memory=False)
+        
+        # Clean the data
+        df['From'] = df['From'].apply(clean_text)
+        df['Subject'] = df['Subject'].apply(clean_text)
+        df['Body'] = df['Body'].apply(clean_text)
+        
+        # Filter out empty rows
+        df = df[
+            (df['Body'] != '') & 
+            (df['Subject'] != '') & 
+            (df['From'] != '')
+        ]
+        
+        # Create document chunks
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500,
+            chunk_overlap=100
+        )
+        
+        # Prepare documents for vector store
+        documents = []
+        print("Processing emails...")
+        for _, row in df.iterrows():
+            email_text = f"From: {row['From']}\nSubject: {row['Subject']}\nBody: {row['Body']}"
+            chunks = text_splitter.split_text(email_text)
+            
+            # Add metadata about fraud status
+            metadata = {"poi_present": bool(row['POI-Present'])}
+            documents.extend([(chunk, metadata) for chunk in chunks])
+        
+        # Add documents to vector store
+        print("Vectorizing emails...")
+        texts = [doc[0] for doc in documents]
+        metadatas = [doc[1] for doc in documents]
+        vector_store.add_texts(texts=texts, metadatas=metadatas)
+        vector_store.persist()
+        
+        print(f"Successfully vectorized {len(df)} emails into {len(documents)} chunks")
+
+def find_similar_emails(email_text: str, k: int = 3) -> tuple[list[str], list[bool]]:
+    """Find similar emails in the vector store and return their content and fraud status"""
+    if vector_store is None:
+        return [], []
+        
+    results = vector_store.similarity_search_with_metadata(email_text, k=k)
+    similar_texts = [doc.page_content for doc in results]
+    fraud_status = [doc.metadata.get('poi_present', False) for doc in results]
+    
+    return similar_texts, fraud_status
+
 def extract_json_response(text: str) -> str:
-    # Try to find JSON structure first
+    """Extract classification from model response"""
     start = text.find("{")
     end = text.find("}")
     if start != -1 and end != -1:
         json_str = text[start:end + 1]
         return json_str.replace("\n", "").replace(" ", "")
     
-    # If no JSON, look for "CLASSIFICATION: X" pattern
     if "CLASSIFICATION:" in text:
         classification = text.split("CLASSIFICATION:")[1].strip().split()[0]
         return f'{{CLASSIFICATION:"{classification}"}}'
@@ -46,21 +143,37 @@ def extract_json_response(text: str) -> str:
 async def classify_email(model: str, email: EmailRequest):
     try:
         t = time.time()
-        print(f"""Sending request to Ollama for {model}...""")
+        print(f"Sending request to Ollama for {model}...")
         
-        prompt = f"""You are a mail classifier. Your task is to classify the following email as either SPAM, PHISHING, or OK.
+        # Get similar emails from the vector store
+        email_text = f"From: {email.sender}\nSubject: {email.subject}\nBody: {email.body}"
+        similar_emails, fraud_status = find_similar_emails(email_text)
+        
+        # Construct context from similar emails
+        context = "\n\nSimilar emails from the database:\n"
+        for i, (similar_email, is_fraud) in enumerate(zip(similar_emails, fraud_status), 1):
+            fraud_label = "Previously marked as suspicious" if is_fraud else "Previously marked as normal"
+            context += f"\nExample {i} ({fraud_label}):\n{similar_email}\n"
+
+        prompt = f"""You are a mail classifier enhanced with a knowledge base of similar emails. Your task is to classify the following email as either SPAM, PHISHING, or OK.
+            
             Rules:
             - Only answer with one word: SPAM, PHISHING, or OK
             - If it looks like a scam or malicious link, classify as PHISHING
             - If it's unwanted commercial email, classify as SPAM
             - If it seems legitimate, classify as OK
+            
+            Use the following similar emails from our database as context for your decision:
+            {context}
+
+            If you have any doubt, mark it as PHISHING or SPAM. You must respond with "OK" only if you are 100% certain that it contains nothing dangerous.
 
             Please respond EXACTLY in this format:
             {{
             Classification: "SPAM" or "PHISHING" or "OK"
             }}
 
-            Email:
+            Email to classify:
             From: {email.sender}
             Subject: {email.subject}
             Body: {email.body}
@@ -74,8 +187,7 @@ async def classify_email(model: str, email: EmailRequest):
                 "stream": False,
                 "options": {
                     "temperature": 0.3,
-                    "top_k": 3,
-                    # "num_predict": 50
+                    "top_k": 3
                 }
             })
         
@@ -90,15 +202,21 @@ async def classify_email(model: str, email: EmailRequest):
             if classification == "UNKNOWN":
                 classification = next((c for c in valid_classifications if c in raw_response), "UNKNOWN")
             
-            print(f"Classification finale: {classification}")
-            print(f"Temps d'exécution: {time.time() - t:.2f} secondes")
+            print(f"Final classification: {classification}")
+            print(f"Execution time: {time.time() - t:.2f} seconds")
             
-            return {"classification": classification, "raw_response": raw_response, "json_response": json_response}
+            return {
+                "classification": classification,
+                "raw_response": raw_response,
+                "json_response": json_response,
+                "similar_emails_count": len(similar_emails),
+                "similar_emails_fraud_count": sum(fraud_status)
+            }
         else:
-            raise HTTPException(status_code=500, detail="Erreur de l'API Ollama")
+            raise HTTPException(status_code=500, detail="Ollama API Error")
 
     except Exception as e:
-        print(f"Erreur: {str(e)}")
+        print(f"Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
@@ -106,4 +224,4 @@ async def health_check():
     return {"status": "healthy"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000) #, workers=2)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
