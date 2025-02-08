@@ -74,7 +74,7 @@ def initialize_vector_store(csv_path: str = "enron_data_fraud_labeled.csv"):
     # Only populate if the store is empty
     if vector_store._collection.count() == 0:
         print("Loading training data from CSV...")
-        df = pd.read_csv(csv_path, low_memory=False)
+        df = pd.read_csv(csv_path, low_memory=False, on_bad_lines='skip', quoting=3)
         
         # Clean the data
         df['From'] = df['From'].apply(clean_text)
