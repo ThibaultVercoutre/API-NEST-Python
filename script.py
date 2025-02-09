@@ -129,8 +129,14 @@ def find_similar_emails(email_text: str, k: int = 3) -> tuple[list[str], list[bo
     """Find similar emails in the vector store and return their content and fraud status"""
     if vector_store is None:
         return [], []
-        
-    results = vector_store.similarity_search_with_metadata(email_text, k=k)
+    
+    # Utilisation de similarity_search au lieu de similarity_search_with_metadata
+    results = vector_store.similarity_search(
+        query=email_text,
+        k=k,
+        include_metadata=True  # Pour s'assurer d'obtenir les métadonnées
+    )
+    
     similar_texts = [doc.page_content for doc in results]
     fraud_status = [doc.metadata.get('poi_present', False) for doc in results]
     
