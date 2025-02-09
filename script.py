@@ -95,24 +95,35 @@ def initialize_vector_store(csv_path: str = "enron_data_fraud_labeled.csv"):
         )
         
         # Prepare documents for vector store
-        documents = []
         print("Processing emails...")
+        BATCH_SIZE = 40000  # Moins que la limite de 41666
+        all_texts = []
+        all_metadatas = []
+        
         for _, row in df.iterrows():
             email_text = f"From: {row['From']}\nSubject: {row['Subject']}\nBody: {row['Body']}"
             chunks = text_splitter.split_text(email_text)
             
             # Add metadata about fraud status
             metadata = {"poi_present": bool(row['POI-Present'])}
-            documents.extend([(chunk, metadata) for chunk in chunks])
+            for chunk in chunks:
+                all_texts.append(chunk)
+                all_metadatas.append(metadata)
+                
+                # Process in batches when we reach the batch size
+                if len(all_texts) >= BATCH_SIZE:
+                    print(f"Vectorizing batch of {len(all_texts)} chunks...")
+                    vector_store.add_texts(texts=all_texts, metadatas=all_metadatas)
+                    all_texts = []
+                    all_metadatas = []
         
-        # Add documents to vector store
-        print("Vectorizing emails...")
-        texts = [doc[0] for doc in documents]
-        metadatas = [doc[1] for doc in documents]
-        vector_store.add_texts(texts=texts, metadatas=metadatas)
+        # Process any remaining documents
+        if all_texts:
+            print(f"Vectorizing final batch of {len(all_texts)} chunks...")
+            vector_store.add_texts(texts=all_texts, metadatas=all_metadatas)
+        
         vector_store.persist()
-        
-        print(f"Successfully vectorized {len(df)} emails into {len(documents)} chunks")
+        print(f"Successfully vectorized {len(df)} emails")
 
 def find_similar_emails(email_text: str, k: int = 3) -> tuple[list[str], list[bool]]:
     """Find similar emails in the vector store and return their content and fraud status"""
