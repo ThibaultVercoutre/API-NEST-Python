@@ -130,11 +130,10 @@ def find_similar_emails(email_text: str, k: int = 3) -> tuple[list[str], list[bo
     if vector_store is None:
         return [], []
     
-    # Utilisation de similarity_search au lieu de similarity_search_with_metadata
+    # Version simplifiée utilisant juste similarity_search
     results = vector_store.similarity_search(
         query=email_text,
-        k=k,
-        include_metadata=True  # Pour s'assurer d'obtenir les métadonnées
+        k=k
     )
     
     similar_texts = [doc.page_content for doc in results]
