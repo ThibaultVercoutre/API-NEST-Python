@@ -58,19 +58,19 @@ async def classify_email(model: str, email: EmailRequest):
        t = time.time()
        print(f"Sending request to Ollama for {model}...")
 
-       prompt = f"""You are a mail classifier. Classify the following email as SPAM, PHISHING, or OK.
+       prompt = f"""You are a mail classifier. Classify the following email as NONOK or OK.
            
            Rules:
-           - Only answer with one word: SPAM, PHISHING, or OK
-           - If it looks like a scam or malicious link, classify as PHISHING
-           - If it's unwanted commercial email, classify as SPAM
+           - Only answer with one word: NONOK or OK
+           - If it looks like a scam or malicious link, classify as NONOK
+           - If it's unwanted commercial email, classify as NONOK
            - If it seems legitimate, classify as OK
            
            Rate the mail from 0 to 10. 10 is sure it's a scam, 0 is sure isn't a scam.
 
            Please respond EXACTLY in this format:
            {{
-           Classification: "SPAM" or "PHISHING" or "OK"
+           Classification: "NONOK" or "OK"
            Rate: 0-10
            }}
 
@@ -97,7 +97,7 @@ async def classify_email(model: str, email: EmailRequest):
            raw_response = result['response'].strip().upper()
            json_response = extract_json_response(raw_response)
            
-           valid_classifications = ["SPAM", "PHISHING", "OK"]
+           valid_classifications = ["NONOK", "OK"]
            classification = json_response.get('CLASSIFICATION', "UNKNOWN")
            rate = json_response.get('RATE', "UNKNOWN")
 
