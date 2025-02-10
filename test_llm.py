@@ -5,7 +5,7 @@ import hashlib
 from tqdm import tqdm
 import numpy as np
 
-model = "phi"
+model = "phi2"
 RAG = '_RAG'
 
 def clean_text(text):
@@ -73,11 +73,17 @@ def main():
     ]
     
     # Ne garder que les cas frauduleux
-    data = data[data['POI-Present'] == 1].copy()
+    data1 = data[data['POI-Present'] == 1].copy()
 
     # Ne garder que les 9000 premières lignes
-    # data = data.head(9000)
+    data2 = data.head(9000)
     
+    # Concaténer les deux dataframes
+    data = pd.concat([data1, data2], ignore_index=True)
+
+    # Mélanger les données
+    data = data.sample(frac=1, random_state=42).reset_index(drop=True)
+
     print(f"Nombre total d'emails au départ: {initial_count}")
     print(f"Nombre d'emails après filtrage des données incomplètes: {len(data)}")
     

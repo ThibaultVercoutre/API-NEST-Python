@@ -1,5 +1,6 @@
 /offload_dir
 /phi2_model
+/enron_db
 
 *.csv
 

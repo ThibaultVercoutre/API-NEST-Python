@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 
-model = "phi"
+model = "deepseek"
+RAG = '_RAG' if 1 == 12 else ''
 
 def analyze_accuracy():
     """
@@ -9,7 +10,7 @@ def analyze_accuracy():
     """
     # Chargement des résultats
     try:
-        results = pd.read_csv('llm_' + model + '_test_results.csv')
+        results = pd.read_csv('llm_' + model + '_test_results' + RAG + '.csv')
         print(f"Nombre total d'emails analysés: {len(results)}")
         
         # Création d'une colonne pour les bonnes prédictions
