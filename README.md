@@ -29,6 +29,14 @@ Ce projet combine des approches d'apprentissage automatique et de modèles de la
 
 ## 💻 Utilisation
 
+
+### API Ollama
+
+1. Exécuter l'API Ollama :
+    ```bash
+    python script.py
+    ```
+
 ### Entraînement & Test
 
 1. Exécuter le classificateur (Pas très fonctionnel) :
