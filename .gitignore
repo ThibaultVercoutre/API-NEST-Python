@@ -3,6 +3,9 @@
 /enron_db
 
 *.csv
+*.sqlite3
+*.db
+*.db-journal
 
 .env
 *.env

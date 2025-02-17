@@ -29,28 +29,51 @@ models = {
 }
 
 def extract_json_response(text: str) -> dict:
-   try:
-       start = text.find("{")
-       end = text.rfind("}")
-       if start != -1 and end != -1:
-           json_str = text[start:end + 1]
-           return json.loads(json_str)
-   except json.JSONDecodeError:
-       pass
-   
-   classification = "UNKNOWN"
-   rate = "UNKNOWN"
-   
-   if "CLASSIFICATION:" in text:
-       classification = text.split("CLASSIFICATION:")[1].strip().split()[0]
-   
-   if "RATE:" in text:
-       rate = text.split("RATE:")[1].strip().split()[0]
+    try:
+        # Cherche la structure JSON
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1:
+            json_str = text[start:end + 1]
+            result = json.loads(json_str)
+            
+            # Normalise la classification
+            classification = result.get("Classification", "UNKNOWN").strip().strip('"').upper()
+            if "OK" in classification:
+                classification = "OK"
+            elif "NON" in classification or "SPAM" in classification or "PHISH" in classification:
+                classification = "NONOK"
+            else:
+                classification = "UNKNOWN"
+                
+            # Normalise le rate en entier
+            rate = result.get("Rate", "UNKNOWN")
+            if isinstance(rate, (int, float)):
+                rate = str(int(rate))
+            else:
+                try:
+                    # Essaie d'extraire le premier nombre
+                    import re
+                    numbers = re.findall(r'\d+', str(rate))
+                    if numbers:
+                        rate = numbers[0]
+                    else:
+                        rate = "UNKNOWN"
+                except:
+                    rate = "UNKNOWN"
 
-   return {
-       "CLASSIFICATION": classification,
-       "RATE": rate
-   }
+            return {
+                "CLASSIFICATION": classification,
+                "RATE": rate
+            }
+            
+    except:
+        pass
+    
+    return {
+        "CLASSIFICATION": "UNKNOWN",
+        "RATE": "UNKNOWN"
+    }
 
 @app.post("/llm/{model}")
 async def classify_email(model: str, email: EmailRequest):
@@ -61,17 +84,26 @@ async def classify_email(model: str, email: EmailRequest):
        prompt = f"""You are a mail classifier. Classify the following email as NONOK or OK.
            
            Rules:
+           - Answer EXACTLY with format below
            - Only answer with one word: NONOK or OK
            - If it looks like a scam or malicious link, classify as NONOK
            - If it's unwanted commercial email, classify as NONOK
            - If it seems legitimate, classify as OK
+           - NONOK (risky):
+             - Score 7-10 only
+             - Scams, malicious links, spam
+           - OK (safe):
+             - Score 0-3 only
+             - Legitimate business emails
            
-           Rate the mail from 0 to 10. 10 is sure it's a scam, 0 is sure isn't a scam.
+           Rate risk 0-10 (SINGLE INTEGER ONLY):
+            0 = definitely legitimate
+            10 = definitely scam
 
            Please respond EXACTLY in this format:
            {{
            Classification: "NONOK" or "OK"
-           Rate: 0-10
+           Rate: [single integer 0-10]
            }}
 
            Email to classify:
