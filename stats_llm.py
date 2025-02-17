@@ -1,7 +1,7 @@
 import pandas as pd
 import sqlite3
 
-model = "phi3"
+model = "phi"
 
 def analyze_accuracy():
     """

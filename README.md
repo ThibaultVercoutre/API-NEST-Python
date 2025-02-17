@@ -50,10 +50,72 @@ Ce projet combine des approches d'apprentissage automatique et de modèles de la
     ```
     > **Note** : Nécessite `enron_data_fraud_labeled.csv` dans le répertoire racine
 
+    Le script effectue les étapes suivantes :
+
+    a. Récupère 9000 mails spam et 9000 mails non-spam, triés en fonction des mails déjà traités.
+
+    b. Teste ces mails avec le modèle de langage spécifié au début du script :
+    ```python
+    model = "phi3"
+    ```
+    c. Enregistre les résultats tous les 10 mails dans un fichier `email_classification.db` contenant les informations suivantes :
+
+    - `hash TEXT PRIMARY KEY` : Identifiant unique de l'email (pour le retrouver)
+    - `sender TEXT` : Expéditeur de l'email
+    - `subject TEXT` : Sujet de l'email
+    - `body TEXT` : Corps de l'email
+    - `poi_present INTEGER` : Indicateur de présence de point d'intérêt
+    - `classification TEXT` : Classification de l'email (spam/non-spam)
+    - `rate TEXT` : Taux de précision de classification donné par le LLM (s'il est sur que l'email est spam, il est de 10, s'il est sur que l'email n'est pas spam, il est de 0)
+    - `response_length INTEGER` : Longueur de la réponse
+    - `response_time REAL` : Temps de réponse
+    - `model TEXT` : Modèle de langage utilisé
+
+
 3. Voir les statistiques du modèle de langage :
     ```bash
     python stats_llm.py
     ```
+
+    ### Résultats de l'analyse
+
+    Voici un exemple des résultats que vous pouvez obtenir en exécutant `stats_llm.py` ici avec `phi3` comme modèle de langage :
+
+    Nombre total d'emails analysés: 7530
+
+    #### Résultats de l'analyse :
+    - Nombre total d'échantillons: 7530
+    - Nombre de prédictions correctes: 3380
+    - Précision globale: 44.89%
+
+    #### Distribution des classifications :
+    - OK: 4185 (55.58%)
+    - NONOK: 3021 (40.12%)
+    - UNKNOWN: 324 (4.30%)
+
+    #### Analyse détaillée :
+
+    Pour la classification NONOK :
+    - Nombre total: 3021
+    - Prédictions correctes: 1439
+    - Précision: 47.63%
+
+    Pour la classification OK :
+    - Nombre total: 4185
+    - Prédictions correctes: 1941
+    - Précision: 46.38%
+
+    #### Analyse détaillée des POI :
+
+    Emails contenant des POI (poi_present = 1) :
+    - Nombre total: 3714
+    - Correctement identifiés comme NONOK: 1439
+    - Précision: 38.75%
+
+    Emails sans POI (poi_present = 0) :
+    - Nombre total: 3816
+    - Correctement identifiés comme OK: 1941
+    - Précision: 50.86%
 
 ## 📁 Structure du Projet
 
