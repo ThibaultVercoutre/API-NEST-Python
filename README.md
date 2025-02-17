@@ -30,12 +30,90 @@ Ce projet combine des approches d'apprentissage automatique et de modèles de la
 ## 💻 Utilisation
 
 
-### API Ollama
+### API Ollama Documentation
 
-1. Exécuter l'API Ollama :
-    ```bash
-    python script.py
-    ```
+#### 1. Lancement de l'API
+```bash
+python script.py
+```
+L'API sera accessible sur `http://localhost:8000` ou `http://127.0.0.1:8000`
+
+#### 2. Points d'accès (Endpoints)
+
+**Classification des emails:**
+- **POST** `/llm/{model}`
+- Modèles disponibles: phi, phi3, mistral, deepseek
+- Exemple: `http://localhost:8000/llm/phi3`
+
+**Vérification de santé:**
+- **GET** `/health`
+- Exemple: `http://localhost:8000/health`
+
+#### 3. Format de la Requête
+
+**Headers:**
+```
+Content-Type: application/json
+```
+
+**Corps de la requête (JSON):**
+```json
+{
+    "sender": "john.doe@enron.com",
+    "subject": "Meeting Tomorrow",
+    "body": "Hello, Can we meet tomorrow at 2pm to discuss the project?"
+}
+```
+
+#### 4. Format de la Réponse
+
+**Réponse réussie (200 OK):**
+```json
+{
+    "classification": "OK",
+    "rate": "2",
+    "raw_response": "...",
+    "json_response": {
+        "CLASSIFICATION": "OK",
+        "RATE": "2"
+    }
+}
+```
+
+**Classifications possibles:**
+- `OK`: Email non frauduleux
+- `NONOK`: Email potentiellement frauduleux
+- `UNKNOWN`: Classification incertaine
+
+**Rate:**
+- Échelle de 0 à 10
+- 0: Confiance maximale en `OK`
+- 10: Confiance maximale en `NONOK`
+
+#### 5. Exemples d'Utilisation
+
+**Avec cURL:**
+```bash
+curl -X POST "http://localhost:8000/llm/phi3" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "sender": "john.doe@enron.com",
+           "subject": "Meeting Tomorrow",
+           "body": "Hello, Can we meet tomorrow at 2pm to discuss the project?"
+         }'
+```
+
+**Avec Postman:**
+1. Nouvelle requête POST
+2. URL: `http://localhost:8000/llm/phi3`
+3. Headers: 
+   - Key: `Content-Type`
+   - Value: `application/json`
+4. Body:
+   - Sélectionner "raw"
+   - Type "JSON"
+   - Copier le JSON d'exemple
+5. Envoyer la requête
 
 ### Entraînement & Test
 
