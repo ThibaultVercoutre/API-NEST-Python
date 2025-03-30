@@ -18,7 +18,12 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 jours
 
 # Configuration de la base de données
-DB_PATH = "nest_users.db"
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'root', 
+    'password': '',
+    'database': 'nest_db'
+}
 
 # Initialisation de l'application
 app = FastAPI(title="Email Classification API")
@@ -58,7 +63,7 @@ class TokenData(BaseModel):
 
 # Initialisation de la base de données
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_CONFIG['database'])
     cursor = conn.cursor()
     
     # Création de la table utilisateurs si elle n'existe pas
@@ -82,7 +87,7 @@ def get_password_hash(password):
     return pwd_context.hash(password)
 
 def get_user(email):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_CONFIG['database'])
     cursor = conn.cursor()
     
     cursor.execute("SELECT email, hashed_password FROM users WHERE email = ?", (email,))
@@ -199,7 +204,7 @@ async def register(user: UserIn):
     # Hasher le mot de passe et créer l'utilisateur
     hashed_password = get_password_hash(user.password)
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_CONFIG['database'])
     cursor = conn.cursor()
     
     try:
@@ -340,7 +345,7 @@ async def classify_email(model: str, email: EmailRequest, current_user: dict = D
 # Fonction pour enregistrer les analyses (historique)
 def save_analysis(user_email, sender, subject, classification, rate):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_CONFIG['database'])
         cursor = conn.cursor()
         
         # Créer la table si elle n'existe pas
