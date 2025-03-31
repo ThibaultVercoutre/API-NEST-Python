@@ -140,7 +140,8 @@ models = {
     "phi": "phi",
     "phi3": "phi3", 
     "mistral": "mistral",
-    "deepseek": "deepseek-r1:8b"
+    "deepseek": "deepseek-r1:8b",
+    "phishing": "phishing"
 }
 
 def extract_json_response(text: str) -> dict:
