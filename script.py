@@ -11,6 +11,20 @@ import jwt
 from datetime import datetime, timedelta
 import sqlite3
 from typing import Optional
+from functools import lru_cache
+import numpy as np
+
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+tokenizer = AutoTokenizer.from_pretrained(
+    "cybersectony/phishing-email-detection-distilbert_v2.4.1",
+    model_max_length=512  # Définir explicitement la longueur maximale
+)
+import torch
+
+# Load model and tokenizer
+model = AutoModelForSequenceClassification.from_pretrained(
+    "cybersectony/phishing-email-detection-distilbert_v2.4.1"
+)
 
 # Configuration de l'authentification
 SECRET_KEY = "votre_cle_secrete_a_changer_en_production"  # À changer en production!
@@ -37,7 +51,7 @@ app.add_middleware(
 )
 
 # Configuration de la sécurité
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Modèles de données
@@ -191,6 +205,123 @@ def extract_json_response(text: str) -> dict:
         "RATE": "UNKNOWN"
     }
 
+@lru_cache(maxsize=1000)
+def analyze_segment(segment_text: str):
+    """Analyse un segment avec mise en cache des résultats."""
+    inputs = tokenizer(
+        segment_text,
+        return_tensors="pt",
+        truncation=True,
+        max_length=512,
+        padding="max_length"
+    )
+    
+    with torch.no_grad():
+        outputs = model(**inputs)
+        predictions = torch.nn.functional.softmax(outputs.logits, dim=-1)
+        return predictions[0].tolist()
+
+def segment_text(text, max_length=512, overlap=100):
+    """Divise le texte en segments avec chevauchement."""
+    segments = []
+    positions = []  # Pour stocker la position relative de chaque segment
+    
+    # Tokenize tout le texte
+    tokens = tokenizer.encode(text, add_special_tokens=False)
+    
+    # Calculer le pas effectif (en tenant compte du chevauchement)
+    stride = max_length - 2 - overlap
+    
+    # Diviser en segments avec chevauchement
+    for i in range(0, len(tokens), stride):
+        segment_tokens = tokens[i:i + max_length - 2]
+        segment_text = tokenizer.decode(segment_tokens)
+        segments.append(segment_text)
+        
+        # Calculer la position relative (0 = début, 1 = fin)
+        position = i / len(tokens)
+        positions.append(position)
+    
+    return segments, positions
+
+def calculate_position_weights(positions):
+    """Calcule les poids basés sur la position des segments."""
+    # Les segments du début et de la fin ont plus de poids
+    weights = []
+    for pos in positions:
+        # Fonction en U : donne plus de poids au début et à la fin
+        weight = 1.0 + 0.5 * (np.exp(-4 * (pos - 0.5) ** 2))
+        weights.append(weight)
+    
+    # Normaliser les poids
+    weights = np.array(weights)
+    weights = weights / weights.sum()
+    return weights
+
+def predict_email(email_text):
+    try:
+        # Segmenter le texte avec chevauchement
+        segments, positions = segment_text(email_text, overlap=100)
+        print(f"Email divisé en {len(segments)} segments avec chevauchement")
+        
+        # Calculer les poids basés sur la position
+        weights = calculate_position_weights(positions)
+        print("Poids des segments:", [f"{w:.3f}" for w in weights])
+        
+        # Stocker les prédictions pour chaque segment
+        all_predictions = []
+        
+        for i, (segment, weight) in enumerate(zip(segments, weights)):
+            print(f"Analyse du segment {i+1}/{len(segments)} (poids: {weight:.3f})")
+            
+            # Utiliser le cache pour l'analyse
+            predictions = analyze_segment(segment)
+            
+            # Appliquer le poids au segment
+            weighted_predictions = [p * weight for p in predictions]
+            all_predictions.append(weighted_predictions)
+        
+        # Sommer les prédictions pondérées
+        avg_probs = [sum(x) for x in zip(*all_predictions)]
+        
+        # Calculer les probabilités combinées
+        phishing_prob = avg_probs[1] + avg_probs[3]  # Classes phishing
+        legitimate_prob = avg_probs[0] + avg_probs[2]  # Classes légitimes
+        
+        # Seuil de confiance
+        CONFIDENCE_THRESHOLD = 0.8
+        
+        # Classification finale
+        if phishing_prob > legitimate_prob:
+            classification = "NONOK"
+            confidence = phishing_prob
+        else:
+            classification = "OK"
+            confidence = legitimate_prob
+        
+        # Ajustement basé sur le seuil
+        if confidence < CONFIDENCE_THRESHOLD and classification == "OK":
+            classification = "NONOK"  # Par précaution
+        
+        return {
+            "classification": classification,
+            "confidence": confidence,
+            "details": {
+                "legitimate_email": avg_probs[0],
+                "phishing_url": avg_probs[1],
+                "legitimate_url": avg_probs[2],
+                "phishing_url_alt": avg_probs[3],
+                "combined_phishing": phishing_prob,
+                "combined_legitimate": legitimate_prob,
+                "segments_analyzed": len(segments),
+                "overlap_size": 100,
+                "position_weights": [float(w) for w in weights]
+            }
+        }
+    except Exception as e:
+        print(f"Error in predict_email: {str(e)}")
+        raise e
+
 # Routes d'authentification
 @app.post("/auth/register", response_model=Token)
 async def register(user: UserIn):
@@ -262,6 +393,56 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 async def read_users_me(current_user: dict = Depends(get_current_user)):
     return {"email": current_user["email"]}
 
+
+# Route pour l'analyse d'email avec BERT (protégée par authentification) , current_user: dict = Depends(get_current_user)
+@app.post("/bert")
+async def bert_email(email: EmailRequest):
+    try:
+        t = time.time()
+        print("Analyzing email with BERT...")
+        
+        # Combine email parts into single text
+        email_text = f"From: {email.sender}\nSubject: {email.subject}\nBody: {email.body}"
+        
+        # Tronquer le texte si nécessaire (pour éviter l'erreur de dimension)
+        max_chars = 1024 * 4  # Estimation approximative pour 1024 tokens
+        if len(email_text) > max_chars:
+            print(f"Email trop long ({len(email_text)} chars), troncature à {max_chars} chars")
+            email_text = email_text[:max_chars]
+        
+        # Get prediction from BERT model
+        prediction = predict_email(email_text)
+        print(prediction)
+        
+        # Utiliser directement la classification et la confiance du modèle
+        classification = prediction["classification"]
+        confidence = prediction["confidence"]
+        
+        # Convertir la confiance en rate (0-10)
+        rate = round(confidence * 10, 2)
+        if classification == "NONOK":
+            rate = max(7, rate)  # Minimum 7 pour NONOK
+        else:
+            rate = min(3, rate)  # Maximum 3 pour OK
+        
+        response_time = time.time() - t
+        
+        return {
+            "classification": classification,
+            "rate": rate,
+            "response_time": response_time,
+            "response_length": len(email_text),
+            "details": prediction["details"]
+        }
+        
+    except Exception as e:
+        print(f"Error in bert_email: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+
 # Route pour l'analyse d'email (protégée par authentification)
 @app.post("/llm/{model}")
 async def classify_email(model: str, email: EmailRequest, current_user: dict = Depends(get_current_user)):
@@ -308,9 +489,12 @@ async def classify_email(model: str, email: EmailRequest, current_user: dict = D
                 "stream": False,
                 "options": {
                     "temperature": 0.3,
-                    "top_k": 3
+                    "top_k": 3,
+                    "timeout": 60  # Timeout de 30 secondes pour Ollama
                 }
-            })
+            },
+            timeout=60  # Timeout global de 60 secondes pour la requête HTTP
+        )
         
         if response.status_code == 200:
             result = response.json()
@@ -337,10 +521,17 @@ async def classify_email(model: str, email: EmailRequest, current_user: dict = D
                 "json_response": json_response
             }
         else:
+            print(f"Ollama API error: {response.status_code} - {response.text}")
             raise HTTPException(status_code=500, detail="Ollama API Error")
 
+    except requests.exceptions.Timeout:
+        print(f"Timeout error: Request took too long to complete")
+        raise HTTPException(
+            status_code=504,
+            detail="Request timeout - The analysis took too long to complete"
+        )
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error during analysis: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Fonction pour enregistrer les analyses (historique)

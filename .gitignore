@@ -9,3 +9,13 @@
 
 .env
 *.env
+
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+
+nest_db

@@ -5,7 +5,7 @@ import hashlib
 from tqdm import tqdm
 import sqlite3
 
-model = "phi3"
+model = "bert"
 
 def init_db():
    conn = sqlite3.connect('email_classifications.db')
@@ -33,7 +33,7 @@ def create_hash(row):
    content = f"{clean_text(row['From'])}{clean_text(row['Subject'])}{clean_text(row['Body'])}"
    return hashlib.md5(content.encode()).hexdigest()
 
-def test_llm(email_data):
+def test_llm(email_data, headers):
     try:
         start_time = time.time() 
         clean_data = {
@@ -41,17 +41,22 @@ def test_llm(email_data):
             "subject": clean_text(email_data['Subject']),
             "body": clean_text(email_data['Body'])
         }
+        
+        # Log de la taille des données
+        print(f"\nTaille du corps de l'email: {len(clean_data['body'])} caractères")
             
         response = requests.post(
-            'http://127.0.0.1:8000/llm/' + model,
+            'http://127.0.0.1:8000/' + model,
             json=clean_data,
-            timeout=300 # Timeout après 5min
+            headers=headers,
+            timeout=300  # Timeout après 5 minutes
         )
         
         response_time = time.time() - start_time
         
         if response.status_code == 200:
             result = response.json()
+            print(f"Temps d'exécution: {response_time:.2f} secondes")
             return {
                 'classification': result['classification'],
                 'rate': result.get('rate', 'UNKNOWN'),  # Valeur par défaut
@@ -64,7 +69,7 @@ def test_llm(email_data):
             return None
             
     except requests.exceptions.Timeout:
-        print("Timeout - skipping")
+        print(f"Timeout après 60 secondes - email ignoré (taille: {len(clean_data['body'])} caractères)")
         time.sleep(5)
         return None
     except Exception as e:
@@ -72,7 +77,54 @@ def test_llm(email_data):
         time.sleep(5)
         return None
 
+def delete_all_results(model: str):
+    conn = sqlite3.connect('email_classifications.db')
+    c = conn.cursor()
+    c.execute('DELETE FROM results WHERE model = ?', (model,))
+    conn.commit()
+    conn.close()
+
 def main():
+    # Création du compte et connexion à l'API
+    register_data = {
+        "email": "vercoutre.thibault@gmail.com",
+        "password": "Tv210802"
+    }
+
+    try:
+        # Tentative d'inscription
+        register_response = requests.post(
+            'http://127.0.0.1:8000/auth/register',
+            json=register_data
+        )
+        
+        # Si l'inscription échoue car l'utilisateur existe déjà, on passe à la connexion
+        if register_response.status_code != 200:
+            print("L'utilisateur existe déjà, tentative de connexion...")
+        
+        # Connexion pour obtenir le token
+        login_response = requests.post(
+            'http://127.0.0.1:8000/auth/login',
+            data={
+                "username": register_data["email"],
+                "password": register_data["password"]
+            }
+        )
+
+        if login_response.status_code == 200:
+            token_data = login_response.json()
+            headers = {
+                "Authorization": f"Bearer {token_data['access_token']}"
+            }
+            print("Connexion réussie!")
+        else:
+            print("Échec de la connexion")
+            return
+
+    except Exception as e:
+        print(f"Erreur lors de l'authentification: {str(e)}")
+        return
+
     conn = init_db()
     cursor = conn.cursor()
     saved_count = 0
@@ -96,7 +148,7 @@ def main():
     untested_data = data[~data['hash'].isin(tested_hashes)]
     
     for _, row in tqdm(untested_data.iterrows(), total=len(untested_data)):
-        result = test_llm(row)
+        result = test_llm(row, headers)
         if result:
             cursor.execute('''INSERT INTO results VALUES (?,?,?,?,?,?,?,?,?,?)''', 
                 (row['hash'], row['From'], row['Subject'], row['Body'], 
@@ -108,11 +160,12 @@ def main():
             conn.commit()
             print(f"\nSauvegardé: {saved_count} emails")
             
-            time.sleep(1)
+            time.sleep(1) # Pause de 1 seconde
         
     conn.commit()
     print(f"\nTotal sauvegardé: {saved_count} emails")
     conn.close()
 
 if __name__ == "__main__":
+#    delete_all_results(model)
    main()
