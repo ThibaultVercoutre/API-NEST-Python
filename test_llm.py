@@ -5,7 +5,7 @@ import hashlib
 from tqdm import tqdm
 import sqlite3
 
-model = "bert"
+model = "llm/phi"
 
 def init_db():
    conn = sqlite3.connect('email_classifications.db')
@@ -30,7 +30,7 @@ def clean_text(text):
    return str(text).strip()
 
 def create_hash(row):
-   content = f"{clean_text(row['From'])}{clean_text(row['Subject'])}{clean_text(row['Body'])}"
+   content = f"{clean_text(row['From'])}{clean_text(row['Subject'])}{clean_text(row['Body'])}{model}"
    return hashlib.md5(content.encode()).hexdigest()
 
 def test_llm(email_data, headers):
@@ -136,7 +136,7 @@ def main():
     
     data = data[data[['Body', 'Subject', 'From']].ne('').all(axis=1)]
     
-    fraud_data = data[data['POI-Present'] == 1].copy()
+    fraud_data = data[data['Label'] == 1].copy()
     normal_data = data.head(9000)
     data = pd.concat([fraud_data, normal_data]).sample(frac=1, random_state=42)
     
@@ -152,7 +152,7 @@ def main():
         if result:
             cursor.execute('''INSERT INTO results VALUES (?,?,?,?,?,?,?,?,?,?)''', 
                 (row['hash'], row['From'], row['Subject'], row['Body'], 
-                row['POI-Present'], result['classification'], result['rate'],
+                row['Label'], result['classification'], result['rate'],
                 result['response_length'], result['response_time'], model))
             saved_count += 1
         

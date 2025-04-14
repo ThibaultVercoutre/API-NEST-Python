@@ -525,7 +525,8 @@ def visualize_model_comparisons():
     """
     Crée des visualisations comparatives entre les différents modèles pour le rapport
     """
-    models = ['phi', 'phi3', 'mistral', 'deepseek', 'phishing', 'bert']
+    # models = ['llm/phi', 'llm/phi3', 'llm/mistral', 'llm/deepseek', 'llm/phishing', 'bert']
+    models = ['llm/phi']
     conn = sqlite3.connect('email_classifications.db')
     
     try:

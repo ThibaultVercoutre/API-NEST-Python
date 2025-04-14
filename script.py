@@ -442,11 +442,21 @@ async def bert_email(email: EmailRequest):
             detail=str(e)
         )
 
-
 # Route pour l'analyse d'email (protégée par authentification)
 @app.post("/llm/{model}")
 async def classify_email(model: str, email: EmailRequest, current_user: dict = Depends(get_current_user)):
     try:
+        # Nettoyer les caractères spéciaux et formater le texte de l'email
+        email.sender = email.sender.strip().replace('\n', ' ').replace('\r', '')
+        email.subject = email.subject.strip().replace('\n', ' ').replace('\r', '')
+        email.body = email.body.strip().replace('\r', '\n')  # Uniformiser les sauts de ligne
+        
+        # Supprimer les espaces multiples
+        email.sender = ' '.join(email.sender.split())
+        email.subject = ' '.join(email.subject.split())
+        email.body = '\n'.join(' '.join(line.split()) for line in email.body.split('\n'))
+
+        # Combine email parts into single text
         t = time.time()
         print(f"Sending request to Ollama for {model}...")
 
@@ -459,20 +469,47 @@ async def classify_email(model: str, email: EmailRequest, current_user: dict = D
             - If it's unwanted commercial email, classify as NONOK
             - If it seems legitimate, classify as OK
             - NONOK (risky):
-              - Score 7-10 only
               - Scams, malicious links, spam
             - OK (safe):
-              - Score 0-3 only
               - Legitimate business emails
-            
-            Rate risk 0-10 (SINGLE INTEGER ONLY):
-             0 = definitely legitimate
-             10 = definitely scam
 
+            Example of a legitimate email:
+            From: hr@companyexample.com  
+            Subject: Meeting Reminder: Monthly Team Check-in
+
+            Body:
+            Hi Team,
+
+            Just a reminder that our monthly team check-in is scheduled for Thursday, April 17th at 10:00 AM. We'll meet in Conference Room B.
+
+            Please let me know if you cannot attend.
+
+            Best regards,  
+            Jessica Smith  
+            Human Resources  
+            CompanyExample Inc.
+
+
+            Example of a scam email:
+            From: securiti-alerts@banksecure-alert.com  
+            Subject: Urgant: Acount Verification Need!
+
+            Body:
+            Dear Valued User,
+
+            We notice suspicous activitie in your account recently. You must urgently clic on link below to verify informations and prevent your account from being suspend.
+
+            [Verify Account now](http://malicious-link.com)
+
+            Ignoring this mesage within 24 hour will result permanent closeure of your acount.
+
+            Thanks you,  
+            BankSecure Team Support
+
+            
             Please respond EXACTLY in this format:
             {{
             Classification: "NONOK" or "OK"
-            Rate: [single integer 0-10]
             }}
 
             Email to classify:
@@ -503,7 +540,6 @@ async def classify_email(model: str, email: EmailRequest, current_user: dict = D
             
             valid_classifications = ["NONOK", "OK"]
             classification = json_response.get('CLASSIFICATION', "UNKNOWN")
-            rate = json_response.get('RATE', "UNKNOWN")
 
             if classification == "UNKNOWN":
                 classification = next((c for c in valid_classifications if c in raw_response), "UNKNOWN")
@@ -512,11 +548,10 @@ async def classify_email(model: str, email: EmailRequest, current_user: dict = D
             print(f"Execution time: {time.time() - t:.2f} seconds")
             
             # Optionnel: Enregistrer l'analyse dans la base de données
-            save_analysis(current_user["email"], email.sender, email.subject, classification, rate)
+            save_analysis(current_user["email"], email.sender, email.subject, classification, 0)
             
             return {
                 "classification": classification,
-                "rate": rate,
                 "raw_response": raw_response,
                 "json_response": json_response
             }
@@ -572,6 +607,117 @@ async def health_check():
 @app.on_event("startup")
 async def startup_event():
     init_db()
+    
+    # Entraînement des modèles Ollama
+    import pandas as pd
+    import json
+    import os
+    import asyncio
+    
+    async def train_models():
+        try:
+            print("Début de l'entraînement des modèles Ollama...")
+            
+            # Vérifier si le fichier existe
+            if not os.path.exists("enron_data_fraud_labeled.csv"):
+                print("Fichier enron_data_fraud_labeled.csv introuvable!")
+                return
+                
+            # Charger les données
+            df = pd.read_csv("enron_data_fraud_labeled.csv")
+            print(f"Fichier chargé avec succès. {len(df)} lignes trouvées.")
+            
+            # Traitement des valeurs nulles
+            df['Subject'].fillna("No subject", inplace=True)
+            
+            # Combiner From, Subject et Body
+            df['text'] = "From: " + df['From'] + "\nSubject: " + df['Subject'] + "\nBody: " + df['Body']
+            
+            # Label clair : phishing ou safe
+            df['label'] = df['Label'].apply(lambda x: "phishing" if x == 1 else "safe")
+            
+            # Gestion du déséquilibre (option : undersampling)
+            phishing_df = df[df['label'] == "phishing"]
+            safe_df = df[df['label'] == "safe"].sample(len(phishing_df) * 3, random_state=42)  # ratio 1:3
+            
+            final_df = pd.concat([phishing_df, safe_df]).sample(frac=1, random_state=42)  # shuffle
+            
+            print(f"Données équilibrées : {len(phishing_df)} emails phishing, {len(safe_df)} emails sécurisés")
+            
+            # Créer des exemples pour les prompts d'entraînement
+            # Prendre un échantillon pour chaque catégorie
+            phishing_examples = phishing_df.sample(5).reset_index(drop=True)
+            safe_examples = safe_df.sample(5).reset_index(drop=True)
+            
+            # Entraîner les modèles
+            for model_name, ollama_model in models.items():
+                try:
+                    print(f"Création du modèle spécialisé pour {model_name}...")
+                    
+                    # Créer un fichier Modelfile avec des exemples intégrés
+                    modelfile_path = f"Modelfile.{model_name}"
+                    
+                    # Créer le contenu du Modelfile avec des exemples intégrés en utilisant la syntaxe correcte
+                    # Contenu initial du Modelfile
+                    modelfile_content = f"""FROM {ollama_model}
+PARAMETER temperature 0.3
+PARAMETER top_k 3
+message system You are a specialized system for identifying phishing emails. Analyze the provided email content and classify it as either "phishing" or "safe". If it's a phishing email, respond with "phishing". If it's a legitimate email, respond with "safe". Be precise in your classification. Phishing emails typically contain urgent requests, suspicious links, poor grammar, unusual sender addresses, and requests for personal information. Legitimate emails are typically well-formatted, come from recognized senders, and don't create artificial urgency.
+"""
+
+                    # Ajouter des exemples de phishing (correctement)
+                    for i, row in phishing_examples.iterrows():
+                        email_text = f"From: {row['From']} Subject: {row['Subject']} Body: {row['Body']}"
+                        email_text = email_text.replace('"', "'").replace('\\', '/')
+                        modelfile_content += f"""
+message user Classify the following email as phishing or safe: {email_text}
+
+message assistant phishing
+"""
+
+                    # Ajouter des exemples sécurisés (correctement)
+                    for i, row in safe_examples.iterrows():
+                        email_text = f"From: {row['From']} Subject: {row['Subject']} Body: {row['Body']}"
+                        email_text = email_text.replace('"', "'").replace('\\', '/')
+                        modelfile_content += f"""
+message user Classify the following email as phishing or safe: {email_text}
+
+message assistant safe
+"""
+                    
+                    # Écrire le Modelfile
+                    with open(modelfile_path, "w", encoding="utf-8") as f:
+                        f.write(modelfile_content)
+                    
+                    print(f"Fichier Modelfile créé pour le modèle {model_name} avec examples intégrés")
+                    
+                    # Construire le modèle personnalisé
+                    phishing_model_name = f"{model_name}-phishing"
+                    create_cmd = f"ollama create {phishing_model_name} -f {modelfile_path}"
+                    print(f"Exécution de la commande: {create_cmd}")
+                    
+                    # Exécuter la commande de création
+                    process = await asyncio.create_subprocess_shell(
+                        create_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await process.communicate()
+                    
+                    if process.returncode != 0:
+                        print(f"Erreur lors de la création du modèle {model_name}: {stderr.decode()}")
+                        continue
+                    
+                    print(f"Modèle {phishing_model_name} créé avec succès avec exemples intégrés")
+                    
+                except Exception as e:
+                    print(f"Erreur lors de la création du modèle {model_name}: {str(e)}")
+        
+        except Exception as e:
+            print(f"Erreur lors de la préparation des données: {str(e)}")
+    
+    # Lancer l'entraînement en arrière-plan sans bloquer le démarrage de l'API
+    asyncio.create_task(train_models())
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
